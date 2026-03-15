@@ -1,0 +1,167 @@
+<!-- face_tracking.html -->
+<div id="face-tracking-container" style="text-align: center; font-family: Arial, sans-serif;">
+    <h3>🎥 Real-time Face Tracking System</h3>
+    <div style="position: relative; width: 640px; height: 480px; margin: 0 auto; border: 2px solid #333; border-radius: 10px; overflow: hidden;">
+        <video id="video" width="640" height="480" autoplay muted playsinline style="position: absolute; top: 0; left: 0;"></video>
+        <canvas id="overlay" width="640" height="480" style="position: absolute; top: 0; left: 0;"></canvas>
+    </div>
+
+    <div style="margin: 15px 0;">
+        <button id="captureBtn" style="background-color: #4CAF50; color: white; padding: 12px 30px; font-size: 18px; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">
+            📸 Capture & Check-in
+        </button>
+        <button id="stopBtn" style="background-color: #f44336; color: white; padding: 12px 30px; font-size: 18px; border: none; border-radius: 5px; cursor: pointer;">
+            ⏹️ Stop Camera
+        </button>
+    </div>
+
+    <div id="status" style="padding: 10px; background-color: #f0f0f0; border-radius: 5px; margin-top: 10px; font-size: 16px;">
+        Loading face detection model...
+    </div>
+
+    <div id="face-info" style="margin-top: 10px; font-size: 14px; color: #666;"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script>
+    let video = document.getElementById('video');
+    let overlay = document.getElementById('overlay');
+    let ctx = overlay.getContext('2d');
+    let statusDiv = document.getElementById('status');
+    let faceInfo = document.getElementById('face-info');
+    let modelLoaded = false;
+    let lastDetections = [];
+
+    async function loadModels() {
+        try {
+            statusDiv.innerHTML = 'Loading face detection models...';
+            await faceapi.nets.tinyFaceDetector.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
+            await faceapi.nets.faceLandmark68Net.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
+            modelLoaded = true;
+            statusDiv.innerHTML = 'Models loaded successfully! Starting camera...';
+            startCamera();
+        } catch (error) {
+            statusDiv.innerHTML = 'Failed to load models: ' + error.message;
+        }
+    }
+
+    async function startCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: 640, height: 480, frameRate: { ideal: 30, max: 60 } }
+            });
+            video.srcObject = stream;
+            video.onplay = () => {
+                statusDiv.innerHTML = 'Camera ready. Face tracking active...';
+                startFaceDetection();
+            };
+        } catch (error) {
+            statusDiv.innerHTML = 'Cannot access camera: ' + error.message;
+        }
+    }
+
+    async function startFaceDetection() {
+        if (!modelLoaded) return;
+        const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+
+        async function detect() {
+            if (!video || video.paused || video.ended) return;
+            try {
+                const detections = await faceapi.detectAllFaces(video, options);
+                lastDetections = detections;
+                ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+                if (detections.length > 0) {
+                    detections.forEach((detection, index) => {
+                        const box = detection.box;
+                        ctx.strokeStyle = '#00ff00';
+                        ctx.lineWidth = 4;
+                        ctx.strokeRect(box.x, box.y, box.width, box.height);
+                        ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+                        ctx.fillRect(box.x, box.y, 30, 5);
+                        ctx.fillRect(box.x, box.y, 5, 30);
+                        ctx.fillRect(box.x + box.width - 30, box.y, 30, 5);
+                        ctx.fillRect(box.x + box.width - 5, box.y, 5, 30);
+                        ctx.fillRect(box.x, box.y + box.height - 5, 30, 5);
+                        ctx.fillRect(box.x, box.y + box.height - 30, 5, 30);
+                        ctx.fillRect(box.x + box.width - 30, box.y + box.height - 5, 30, 5);
+                        ctx.fillRect(box.x + box.width - 5, box.y + box.height - 30, 5, 30);
+                        ctx.font = '18px Arial';
+                        ctx.fillStyle = '#00ff00';
+                        ctx.fillText(`Face ${index + 1}`, box.x, box.y - 10);
+
+                        if (detection.landmarks) {
+                            ctx.fillStyle = '#ff0000';
+                            detection.landmarks.positions.forEach(point => {
+                                ctx.beginPath();
+                                ctx.arc(point.x, point.y, 2, 0, 2 * Math.PI);
+                                ctx.fill();
+                            });
+                        }
+                    });
+                    faceInfo.innerHTML = `${detections.length} face(s) detected | Position: (${Math.round(detections[0].box.x)}, ${Math.round(detections[0].box.y)})`;
+                    statusDiv.innerHTML = 'Tracking face... Press capture to check in.';
+                } else {
+                    faceInfo.innerHTML = 'No face detected';
+                    statusDiv.innerHTML = 'Please face the camera.';
+                }
+            } catch (error) {
+                console.error('Detection error:', error);
+            }
+            requestAnimationFrame(detect);
+        }
+        detect();
+    }
+
+    async function captureImage() {
+        statusDiv.innerHTML = 'Capturing image...';
+        const captureCanvas = document.createElement('canvas');
+        captureCanvas.width = video.videoWidth;
+        captureCanvas.height = video.videoHeight;
+        const captureCtx = captureCanvas.getContext('2d');
+        captureCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+
+        if (lastDetections.length > 0) {
+            const box = lastDetections[0].box;
+            const padding = 30;
+            const x = Math.max(0, box.x - padding);
+            const y = Math.max(0, box.y - padding);
+            const width = Math.min(captureCanvas.width - x, box.width + (padding * 2));
+            const height = Math.min(captureCanvas.height - y, box.height + (padding * 2));
+
+            const faceCanvas = document.createElement('canvas');
+            faceCanvas.width = width;
+            faceCanvas.height = height;
+            faceCanvas.getContext('2d').drawImage(captureCanvas, x, y, width, height, 0, 0, width, height);
+
+            const imageData = faceCanvas.toDataURL('image/jpeg', 0.9);
+            ctx.strokeStyle = '#0000ff';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(x, y, width, height);
+            ctx.fillStyle = 'rgba(0, 0, 255, 0.2)';
+            ctx.fillRect(x, y, width, height);
+            ctx.fillStyle = 'white';
+            ctx.font = '20px Arial';
+            ctx.fillText('Capturing...', x + 10, y + 30);
+
+            google.colab.kernel.invokeFunction('notebook.process_face', [imageData], {});
+            statusDiv.innerHTML = 'Image sent for processing. See results above.';
+        } else {
+            const imageData = captureCanvas.toDataURL('image/jpeg', 0.9);
+            google.colab.kernel.invokeFunction('notebook.process_face', [imageData], {});
+            statusDiv.innerHTML = 'No face detected. Sending full frame for processing.';
+        }
+    }
+
+    document.getElementById('captureBtn').onclick = captureImage;
+    document.getElementById('stopBtn').onclick = function() {
+        const stream = video.srcObject;
+        if (stream) stream.getTracks().forEach(track => track.stop());
+        video.srcObject = null;
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+        statusDiv.innerHTML = 'Camera stopped.';
+        faceInfo.innerHTML = '';
+    };
+
+    loadModels();
+</script>
