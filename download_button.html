@@ -1,0 +1,13 @@
+<!-- download_button.html -->
+<div style="margin: 20px 0; padding: 15px; background-color: #e3f2fd; border-radius: 10px; text-align: center;">
+    <h3 style="color: #1565C0;">Latest Check-in Data</h3>
+    <p>Total check-ins: {{total}} people</p>
+    <div style="max-height: 200px; overflow-y: auto; margin: 10px 0;">
+        {{table}}
+    </div>
+    <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{{excel_base64}}"
+       download="checkin_list.xlsx"
+       style="background-color: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-size: 16px;">
+        📥 Download Excel
+    </a>
+</div>
